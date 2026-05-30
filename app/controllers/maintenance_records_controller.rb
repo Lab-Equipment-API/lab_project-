@@ -1,41 +1,54 @@
 class MaintenanceRecordsController < ApplicationController
   before_action :set_maintenance_record, only: [:show, :update, :destroy]
-  before_action :verify_category_exists, only: [:create, :update]
 
-  # GET /maintenance_records (ordered by name, includes category name, optional status filter)
+  # GET /maintenance_records
+  # GET /maintenance_records?equipment_id=3
   def index
-    # We include the category association to avoid N+1 queries
-    @records = MaintenanceRecord.includes(:category).order(:name)
+    records = MaintenanceRecord.includes(:equipment).order(performed_at: :desc)
 
-    if params[:status].present?
-      @records = @records.where(status: params[:status])
+    if params[:equipment_id].present?
+      records = records.where(equipment_id: params[:equipment_id])
     end
 
-    render json: @records.as_json(include: { category: { only: :name } })
+    render json: records.map { |r| maintenance_record_json(r) }
   end
 
-  # GET /maintenance_records/:id (includes category)
+  # GET /maintenance_records/:id
   def show
-    render json: @maintenance_record.as_json(include: :category)
+    render json: maintenance_record_json(@maintenance_record)
   end
 
-  # POST /maintenance_records (verifies category exists)
+  # POST /maintenance_records
   def create
-    @maintenance_record = MaintenanceRecord.new(maintenance_record_params)
+    # Verify equipment exists before creating
+    equipment = Equipment.find_by(id: maintenance_record_params[:equipment_id])
+    unless equipment
+      return render json: { error: "Equipment not found" }, status: :unprocessable_entity
+    end
 
-    if @maintenance_record.save
-      render json: @maintenance_record, status: :created
+    record = MaintenanceRecord.new(maintenance_record_params)
+
+    if record.save
+      render json: maintenance_record_json(record.reload), status: :created
     else
-      render json: @maintenance_record.errors, status: :unprocessable_entity
+      render json: { errors: record.errors.full_messages }, status: :unprocessable_entity
     end
   end
 
-  # PATCH/PUT /maintenance_records/:id
+  # PATCH /maintenance_records/:id
   def update
+    # If equipment_id is being changed, verify the new equipment exists
+    if maintenance_record_params[:equipment_id].present?
+      equipment = Equipment.find_by(id: maintenance_record_params[:equipment_id])
+      unless equipment
+        return render json: { error: "Equipment not found" }, status: :unprocessable_entity
+      end
+    end
+
     if @maintenance_record.update(maintenance_record_params)
-      render json: @maintenance_record
+      render json: maintenance_record_json(@maintenance_record.reload)
     else
-      render json: @maintenance_record.errors, status: :unprocessable_entity
+      render json: { errors: @maintenance_record.errors.full_messages }, status: :unprocessable_entity
     end
   end
 
@@ -48,19 +61,25 @@ class MaintenanceRecordsController < ApplicationController
   private
 
   def set_maintenance_record
-    @maintenance_record = MaintenanceRecord.find(params[:id])
-  rescue ActiveRecord::RecordNotFound
-    render json: { error: "Maintenance record not found" }, status: :not_found
-  end
-
-  def verify_category_exists
-    category_id = params.dig(:maintenance_record, :category_id)
-    unless Category.exists?(category_id)
-      render json: { error: "Category does not exist" }, status: :bad_request
+    @maintenance_record = MaintenanceRecord.includes(:equipment).find_by(id: params[:id])
+    unless @maintenance_record
+      render json: { error: "Maintenance record not found" }, status: :not_found
     end
   end
 
   def maintenance_record_params
-    params.require(:maintenance_record).permit(:name, :status, :performed_at, :category_id, :description)
+    params.require(:maintenance_record).permit(:description, :performed_at, :equipment_id)
+  end
+
+  def maintenance_record_json(record)
+    {
+      id: record.id,
+      description: record.description,
+      performed_at: record.performed_at,
+      equipment_id: record.equipment_id,
+      equipment_name: record.equipment&.name,
+      created_at: record.created_at,
+      updated_at: record.updated_at
+    }
   end
 end
