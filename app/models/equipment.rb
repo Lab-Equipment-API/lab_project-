@@ -19,7 +19,11 @@ class Equipment < ApplicationRecord
                 maintenance
               ]
             }
-
-
-
-end
+            def as_json(options = {})
+            if options[:include_category]
+              super(options).merge({ category_name: category&.name })
+            else
+              super(options)
+            end
+          end
+        end

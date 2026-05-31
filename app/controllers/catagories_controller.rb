@@ -1,46 +1,43 @@
 class CategoriesController < ApplicationController
   before_action :set_category, only: [:show, :update, :destroy]
 
+  # GET /categories
   def index
-    categories = Category.order(:name)
-    render json: categories
+    @categories = Category.order(:name)
+    render json: @categories.as_json(include_equipment_count: true)
   end
 
+  # GET /categories/:id
   def show
-    render json: {
-      id: @category.id,
-      name: @category.name,
-      equipment_count: @category.equipment.count
-    }
+    render json: @category.as_json(include_equipment_count: true)
   end
 
+  # POST /categories
   def create
-    category = Category.new(category_params)
-
-    if category.save
-      render json: category, status: :created
+    @category = Category.new(category_params)
+    
+    if @category.save
+      render json: @category.as_json(include_equipment_count: true), status: :created
     else
-      render json: { errors: category.errors.full_messages },
-             status: :unprocessable_entity
+      render json: { errors: @category.errors.full_messages }, status: :unprocessable_entity
     end
   end
 
+  # PATCH /categories/:id
   def update
     if @category.update(category_params)
-      render json: @category
+      render json: @category.as_json(include_equipment_count: true), status: :ok
     else
-      render json: { errors: @category.errors.full_messages },
-             status: :unprocessable_entity
+      render json: { errors: @category.errors.full_messages }, status: :unprocessable_entity
     end
   end
 
+  # DELETE /categories/:id
   def destroy
-    count = @category.equipment.count
-
-    if count > 0
-      render json: {
-        error: "Cannot delete category. #{count} equipment items still belong to it."
-      }, status: :conflict
+    if @category.equipment.exists?
+      count = @category.equipment.count
+      render json: { error: "Cannot delete category. #{count} equipment items still belong to it." }, 
+             status: :conflict
     else
       @category.destroy
       head :no_content
